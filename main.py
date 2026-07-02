@@ -43,6 +43,7 @@ else:
         f"🎯 [CHẾ ĐỘ TỰ ĐỘNG]: Nhận diện lệnh chạy RIÊNG LẺ. Video mục tiêu: {os.path.basename(video_list_to_process[0])}")
 
 device_hardware = 0 if torch.cuda.is_available() else 'cpu'
+#Nạp mô hình YOLO
 model = YOLO("yolo11n-seg.pt")
 
 # ==================== THÔNG SỐ CẤU HÌNH THỰC TẾ ====================
@@ -66,6 +67,7 @@ for v_idx, video_full_path in enumerate(video_list_to_process):
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    #Quy đổi pixel sang mét
     pixel_to_meter = REAL_VIEW_WIDTH_METER / w
     frames_per_segment = total_frames // 20
 
@@ -75,13 +77,14 @@ for v_idx, video_full_path in enumerate(video_list_to_process):
     ], dtype=np.int32)
 
     print(f"\n🚀 [KÍCH HOẠT] -> Đang phân tích chỉ số PCI cho: {video_name}")
-
+     #Chạy qua từng đoạn 50 m
     for seg_idx in range(20):
         frame_grid_areas = []
         frame_single_areas = []
 
         sample_count = 20
         start_frame = seg_idx * frames_per_segment
+        # Lấy mẫu frame trong mỗi đoạn
         frame_indices = np.linspace(start_frame, start_frame + frames_per_segment - 1, sample_count, dtype=int)
 
         for f_idx in frame_indices:
@@ -91,7 +94,7 @@ for v_idx, video_full_path in enumerate(video_list_to_process):
 
             current_grid_m2 = 0.0
             current_single_m2 = 0.0
-
+             #Nhận diện vết nứt bằng YOLO
             results = model(im0, imgsz=320, device=device_hardware, verbose=False)[0]
 
             if results.masks is not None:
@@ -99,10 +102,12 @@ for v_idx, video_full_path in enumerate(video_list_to_process):
                     cls = int(box.cls[0])
                     if cls == CLASS_KHE_NOI: continue
                     if cls == CLASS_NUT_LUOI and len(mask) > 0:
+                        #Tính diện tích nứt lưới
                         pixel_area = cv2.contourArea(np.array(mask, dtype=np.int32))
                         current_grid_m2 += pixel_area * (pixel_to_meter ** 2)
                     elif cls == CLASS_NUT_DON:
                         xywh = box.xywh[0].tolist()
+                        # Tính diện tích nứt đơn
                         real_length_meter = max(xywh[2], xywh[3]) * pixel_to_meter
                         current_single_m2 += real_length_meter * 0.3
 
@@ -144,7 +149,7 @@ for v_idx, video_full_path in enumerate(video_list_to_process):
         pct_grid = (seg_avg_grid_m2 / total_road_scanned_m2) * 100
         pct_single = (seg_avg_single_m2 / total_road_scanned_m2) * 100
         seg_pct_total = min(pct_grid + pct_single, 100.0)
-
+         #Tính PCI
         diem_tru_phat = (pct_grid * 3.0) + (pct_single * 1.5)
         pci_score = round(max(0.0, 100.0 - diem_tru_phat), 2)
 
@@ -195,6 +200,7 @@ if len(all_segments_data) > 0:
         output_img = f"bieu_do_pci_{video_base_name}.png"
 
     df = pd.DataFrame(all_segments_data)
+    # Xuất kết quả ra CSV
     df.to_csv(output_csv, index=False, encoding="utf-8-sig")
     print("\n================ TÍNH TOÁN PCI HOÀN TẤT ================")
     print(f"🎉 Da xuat file bao cao bieu mau tai: '{output_csv}'")
@@ -251,7 +257,7 @@ if len(all_segments_data) > 0:
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
 
-    # Tự động xuất ảnh đồ thị độ nét cao để chèn phụ lục báo cáo
+    # Tự động xuất ảnh đồ thị độ nét cao để chèn phụ lục báo cáo -Vẽ biểu đồ
     plt.savefig(output_img, dpi=300, bbox_inches='tight')
     print(f"📊 [ĐỒ THỊ]: Đã xuất ảnh biểu đồ phân tích thành công tại: '{output_img}'")
 
